@@ -265,17 +265,8 @@ def _setup_logging(verbose: bool) -> None:
 
 
 def run(dry_run: bool, sample: int | None = None) -> int:
-    env = {**_load_env_file(ENV_FILE), **os.environ}
-    webhook_url = env.get("WEBHOOK_URL", "").strip()
-    secret = env.get("FORWARDER_SECRET", "").strip()
-    if not dry_run and (not webhook_url or not secret):
-        logging.error(
-            "missing WEBHOOK_URL or FORWARDER_SECRET (expected in %s or process env)",
-            ENV_FILE,
-        )
-        return 2
-
     blocklist = _load_blocklist(BLOCKLIST_FILE)
+    state_existed = STATE_FILE.exists()
     last_rowid = _load_state(STATE_FILE)
 
     if not CHAT_DB.exists():
@@ -292,6 +283,45 @@ def run(dry_run: bool, sample: int | None = None) -> int:
         )
         return 4
     con.row_factory = sqlite3.Row
+
+    # First run with no state file (and not in sample mode): seed last_rowid
+    # to the current max ROWID so we start from "now" rather than replay the
+    # entire chat.db history. Forward nothing this tick; the next tick (5 min
+    # later under launchd) picks up any genuinely new arrivals. Runs BEFORE
+    # the .env check so the agent can self-bootstrap even if WEBHOOK_URL /
+    # FORWARDER_SECRET haven't been filled in yet.
+    if not state_existed and sample is None:
+        try:
+            row = con.execute("SELECT COALESCE(MAX(ROWID), 0) FROM message").fetchone()
+        except sqlite3.DatabaseError as e:
+            logging.error("could not read current max ROWID (%s)", e)
+            con.close()
+            return 5
+        max_rowid = int(row[0]) if row else 0
+        con.close()
+        if dry_run:
+            logging.info(
+                "dry-run first run: would seed state.json with last_rowid=%d", max_rowid
+            )
+        else:
+            _save_state(STATE_FILE, max_rowid)
+            logging.info(
+                "first run: seeded state.json with last_rowid=%d "
+                "(no messages forwarded this tick; next run picks up new arrivals)",
+                max_rowid,
+            )
+        return 0
+
+    env = {**_load_env_file(ENV_FILE), **os.environ}
+    webhook_url = env.get("WEBHOOK_URL", "").strip()
+    secret = env.get("FORWARDER_SECRET", "").strip()
+    if not dry_run and (not webhook_url or not secret):
+        logging.error(
+            "missing WEBHOOK_URL or FORWARDER_SECRET (expected in %s or process env)",
+            ENV_FILE,
+        )
+        con.close()
+        return 2
 
     try:
         if sample is not None:

@@ -76,9 +76,14 @@ cat <<EOF
 
 Next steps:
   1. Edit $STATE_DIR/.env — fill in WEBHOOK_URL and FORWARDER_SECRET.
-  2. Grant Full Disk Access to your python3 binary:
+  2. Confirm Full Disk Access is granted to your python3 binary:
        System Settings > Privacy & Security > Full Disk Access
-       Run 'which python3' to find the binary, then add it to the list.
-  3. Sanity check (no POST):  python3 $FORWARDER_SCRIPT --dry-run --verbose
-  4. Watch the live log:       tail -f $STATE_DIR/forwarder.log
+  3. Watch the live log:  tail -f $STATE_DIR/forwarder.log
+  4. Send yourself a test iMessage and watch it appear in the Notion AI Inbox.
+
+First-run behavior:
+  The agent runs every 300s. The first run after Full Disk Access is granted
+  seeds state.json with your current chat.db max ROWID and exits without
+  forwarding (so we don't replay your entire iMessage history). The next
+  run picks up only genuinely new arrivals.
 EOF
