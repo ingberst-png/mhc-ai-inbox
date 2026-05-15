@@ -151,6 +151,30 @@ def _query_messages(con: sqlite3.Connection, last_rowid: int, limit: int) -> lis
     return cur.fetchall()
 
 
+def _sample_recent_messages(con: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
+    """Most-recent N inbound messages, regardless of state. For --sample dry-runs."""
+    cur = con.execute(
+        """
+        SELECT m.ROWID            AS rowid,
+               m.guid             AS guid,
+               m.text             AS text,
+               m.attributedBody   AS attributed_body,
+               m.date             AS mac_date,
+               h.id               AS handle_id,
+               c.display_name     AS chat_name
+          FROM message m
+          LEFT JOIN handle h               ON h.ROWID  = m.handle_id
+          LEFT JOIN chat_message_join cmj  ON cmj.message_id = m.ROWID
+          LEFT JOIN chat c                 ON c.ROWID  = cmj.chat_id
+         WHERE m.is_from_me = 0
+         ORDER BY m.ROWID DESC
+         LIMIT ?
+        """,
+        (limit,),
+    )
+    return list(reversed(cur.fetchall()))
+
+
 def _build_message(row: sqlite3.Row) -> dict | None:
     text = row["text"]
     if not text:
@@ -207,11 +231,11 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
-def run(dry_run: bool) -> int:
+def run(dry_run: bool, sample: int | None = None) -> int:
     env = {**_load_env_file(ENV_FILE), **os.environ}
     webhook_url = env.get("WEBHOOK_URL", "").strip()
     secret = env.get("FORWARDER_SECRET", "").strip()
-    if not webhook_url or not secret:
+    if not dry_run and (not webhook_url or not secret):
         logging.error(
             "missing WEBHOOK_URL or FORWARDER_SECRET (expected in %s or process env)",
             ENV_FILE,
@@ -237,7 +261,11 @@ def run(dry_run: bool) -> int:
     con.row_factory = sqlite3.Row
 
     try:
-        rows = _query_messages(con, last_rowid, BATCH_LIMIT)
+        if sample is not None:
+            rows = _sample_recent_messages(con, sample)
+            logging.info("sample mode: %d most-recent inbound messages (state not advanced)", len(rows))
+        else:
+            rows = _query_messages(con, last_rowid, BATCH_LIMIT)
     except sqlite3.DatabaseError as e:
         logging.error("chat.db query failed (%s); database may be locked or schema changed.", e)
         con.close()
@@ -306,15 +334,26 @@ def main() -> int:
         help="Print payload, do not POST or advance state.",
     )
     parser.add_argument(
+        "--sample",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Inspect the N most-recent inbound messages instead of using state. Requires --dry-run.",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
         help="Also log to stdout (DEBUG level).",
     )
     args = parser.parse_args()
+    if args.sample is not None and not args.dry_run:
+        parser.error("--sample requires --dry-run")
+    if args.sample is not None and args.sample <= 0:
+        parser.error("--sample N must be positive")
     _setup_logging(args.verbose)
     try:
-        return run(dry_run=args.dry_run)
+        return run(dry_run=args.dry_run, sample=args.sample)
     except Exception:
         logging.exception("forwarder crashed")
         return 1
