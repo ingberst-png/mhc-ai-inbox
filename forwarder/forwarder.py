@@ -91,28 +91,59 @@ def _mac_date_to_iso(mac_ns: int) -> str:
     return dt.datetime.fromtimestamp(seconds, tz=dt.timezone.utc).isoformat()
 
 
-_PRINTABLE_RUN = re.compile(rb"[\x20-\x7e\xc0-\xff\n\r\t]{4,}")
+_NOISE_RE = re.compile(
+    r"^(__k\w+|NS[A-Z]\w*|\$class\w*|WNS\w*|WHttp\w*|streamtyped|Anchored)",
+)
 
 
 def _extract_attributed(body: bytes | None) -> str | None:
-    """Best-effort plain-text recovery from a typedstream attributedBody blob.
+    """Extract message text from an NSAttributedString typedstream blob.
 
-    Newer macOS (Sonoma+) often stores message text in `attributedBody` and
-    leaves `text` NULL. The blob is an NSAttributedString typedstream; rather
-    than parse it, we scan for the longest printable run after the NSString
-    marker. Imperfect but works on the common case.
+    Sonoma+ often stores message content in `attributedBody` with `text`
+    NULL. The blob is a Foundation typedstream: each NSString is wrapped as
+    ``+ <length> <utf-8 bytes>`` where the length byte indicates 1, 2, or
+    4-byte length encoding. We walk every NSString section in order, skip
+    those whose decoded value matches a known typedstream metadata key
+    (attribute keys like ``__kIMMessagePartAttributeName``, class wrappers
+    like ``WNSURL``), and return the first real string we find. Returns
+    None when nothing readable is present (pure-attachment messages, etc.).
     """
     if not body:
         return None
-    idx = body.find(b"NSString")
-    if idx < 0:
-        return None
-    window = body[idx + 8 : idx + 8000]
-    runs = _PRINTABLE_RUN.findall(window)
-    if not runs:
-        return None
-    text = max(runs, key=len).decode("utf-8", errors="replace").strip()
-    return text or None
+    pos = 0
+    while True:
+        idx = body.find(b"NSString", pos)
+        if idx < 0:
+            return None
+        pos = idx + 8
+        scan_end = min(pos + 32, len(body))
+        plus_idx = body.find(b"+", pos, scan_end)
+        if plus_idx < 0:
+            continue
+        len_pos = plus_idx + 1
+        if len_pos >= len(body):
+            continue
+        b0 = body[len_pos]
+        if b0 < 0x80:
+            length = b0
+            data_start = len_pos + 1
+        elif b0 == 0x81 and len_pos + 2 < len(body):
+            length = int.from_bytes(body[len_pos + 1 : len_pos + 3], "little")
+            data_start = len_pos + 3
+        elif b0 == 0x82 and len_pos + 4 < len(body):
+            length = int.from_bytes(body[len_pos + 1 : len_pos + 5], "little")
+            data_start = len_pos + 5
+        else:
+            continue
+        if length == 0 or length > 32000 or data_start + length > len(body):
+            continue
+        text_bytes = body[data_start : data_start + length]
+        pos = data_start + length
+        text = text_bytes.decode("utf-8", errors="replace")
+        clean = text.strip("\ufffc\ufffd \t\r\n")
+        if not clean or _NOISE_RE.match(clean):
+            continue
+        return clean
 
 
 def _is_blocked(sender: str, body: str, blocklist: dict[str, list[str]]) -> str | None:
