@@ -210,6 +210,8 @@ def _build_message(row: sqlite3.Row) -> dict | None:
     text = row["text"]
     if not text:
         text = _extract_attributed(row["attributed_body"])
+    if text:
+        text = text.strip("\ufffc\ufffd \t\r\n")
     if not text:
         return None
     sender = row["handle_id"]
