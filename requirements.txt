@@ -1,4 +1,12 @@
-# Pinned versions will be filled in Phase B.
-# Expected stack: fastapi, uvicorn, psycopg[binary], anthropic,
-# google-api-python-client, google-auth, google-auth-oauthlib,
-# notion-client, resend, httpx, python-dateutil, pydantic.
+fastapi>=0.115,<0.120
+uvicorn[standard]>=0.32,<0.40
+psycopg[binary]>=3.2,<4
+psycopg-pool>=3.2,<4
+anthropic>=0.39,<1
+google-api-python-client>=2.150,<3
+google-auth>=2.35,<3
+google-auth-oauthlib>=1.2,<2
+notion-client>=2.2,<3
+resend>=2.4,<3
+python-dateutil>=2.9
+pydantic>=2.9,<3
