@@ -1,5 +1,9 @@
 {
-  "_comment": "Populated in Phase D. Add phone numbers (E.164), email addresses, and substring patterns to skip before forwarding.",
+  "_comment": "Blocklist for the iMessage forwarder. Lowercase substring match. 'handles' matches against the sender (phone number in E.164 or email address). 'keywords' matches against the message body. Either match drops the message before forwarding.",
+  "_example": {
+    "handles": ["+14155550100", "@spam-domain.com"],
+    "keywords": ["unsubscribe", "verification code"]
+  },
   "handles": [],
   "keywords": []
 }

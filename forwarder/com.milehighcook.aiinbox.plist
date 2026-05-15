@@ -1,1 +1,46 @@
-<!-- launchd config. Finalized in Phase D. -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd config for the MHC AI Inbox iMessage forwarder.
+
+  This file is a TEMPLATE. install.sh substitutes the placeholders and writes
+  the resolved plist to ~/Library/LaunchAgents/. Do not load this file
+  directly with launchctl.
+
+  Placeholders (replaced by install.sh):
+    __FORWARDER_SCRIPT__  absolute path to forwarder.py
+    __HOME__              absolute path to the user's home directory
+    __LOG_DIR__           absolute path to ~/.mhc_ai_inbox (launchd stdout/stderr)
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.milehighcook.aiinbox</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>python3</string>
+    <string>__FORWARDER_SCRIPT__</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__HOME__</string>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/launchd.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/launchd.err.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
