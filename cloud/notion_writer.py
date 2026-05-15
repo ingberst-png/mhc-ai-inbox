@@ -203,6 +203,7 @@ async def query_recent_items(settings: Settings, *, hours: int) -> list[dict[str
                 "title": _plain(props.get(_TITLE_PROP)),
                 "source": _plain(props.get(_SOURCE_PROP)),
                 "sender": _plain(props.get(_SENDER_PROP)),
+                "snippet": _plain(props.get(_SNIPPET_PROP)),
                 "suggested_action": _plain(props.get(_ACTION_PROP)),
                 "priority": _plain(props.get(_PRIORITY_PROP)),
                 "confidence": (props.get(_CONFIDENCE_PROP) or {}).get("number"),
