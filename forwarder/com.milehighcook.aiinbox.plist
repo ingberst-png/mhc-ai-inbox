@@ -9,6 +9,7 @@
   directly with launchctl.
 
   Placeholders (replaced by install.sh):
+    __PYTHON_BIN__        absolute path to python3 (the one granted Full Disk Access)
     __FORWARDER_SCRIPT__  absolute path to forwarder.py
     __HOME__              absolute path to the user's home directory
     __LOG_DIR__           absolute path to ~/.mhc_ai_inbox (launchd stdout/stderr)
@@ -20,8 +21,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/env</string>
-    <string>python3</string>
+    <string>__PYTHON_BIN__</string>
     <string>__FORWARDER_SCRIPT__</string>
   </array>
 

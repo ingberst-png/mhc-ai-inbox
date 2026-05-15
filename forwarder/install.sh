@@ -34,6 +34,16 @@ if [[ ! -f "$TEMPLATE_PLIST" ]]; then
   exit 1
 fi
 
+PYTHON_BIN="$(command -v python3 || true)"
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "ERROR: python3 not found in PATH" >&2
+  exit 1
+fi
+# Resolve to the real path so launchd uses the same binary that Full Disk
+# Access was granted to (avoids /usr/bin/env launchd-PATH-resolution surprises).
+PYTHON_BIN="$(readlink -f "$PYTHON_BIN" 2>/dev/null || python3 -c 'import sys; print(sys.executable)')"
+echo "    python3:        $PYTHON_BIN"
+
 mkdir -p "$STATE_DIR"
 mkdir -p "$LAUNCH_AGENTS_DIR"
 
@@ -59,6 +69,7 @@ else
 fi
 
 sed \
+  -e "s|__PYTHON_BIN__|$PYTHON_BIN|g" \
   -e "s|__FORWARDER_SCRIPT__|$FORWARDER_SCRIPT|g" \
   -e "s|__HOME__|$HOME|g" \
   -e "s|__LOG_DIR__|$STATE_DIR|g" \

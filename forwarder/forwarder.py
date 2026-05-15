@@ -275,11 +275,14 @@ def run(dry_run: bool, sample: int | None = None) -> int:
 
     try:
         con = sqlite3.connect(f"file:{CHAT_DB}?mode=ro&immutable=1", uri=True, timeout=5)
-    except sqlite3.OperationalError as e:
+    except sqlite3.DatabaseError as e:
         logging.error(
-            "cannot open chat.db read-only (%s). Grant Full Disk Access to your "
-            "python3 binary in System Settings > Privacy & Security.",
+            "cannot open chat.db read-only (%s). Grant Full Disk Access to %s "
+            "in System Settings > Privacy & Security, then reload the launchd "
+            "agent: launchctl bootout gui/$UID ~/Library/LaunchAgents/"
+            "com.milehighcook.aiinbox.plist && bash forwarder/install.sh",
             e,
+            sys.executable,
         )
         return 4
     con.row_factory = sqlite3.Row
