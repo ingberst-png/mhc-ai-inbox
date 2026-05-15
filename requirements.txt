@@ -1,0 +1,4 @@
+# Pinned versions will be filled in Phase B.
+# Expected stack: fastapi, uvicorn, psycopg[binary], anthropic,
+# google-api-python-client, google-auth, google-auth-oauthlib,
+# notion-client, resend, httpx, python-dateutil, pydantic.
