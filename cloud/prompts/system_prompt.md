@@ -37,7 +37,9 @@ Return **strict JSON only**. No prose, no markdown, no code fences. The exact sh
   "suggested_action": "One sentence telling Steve what to do next",
   "due_date": "YYYY-MM-DD" or null,
   "priority": "High" | "Medium" | "Low",
-  "confidence": 0.0 to 1.0
+  "confidence": 0.0 to 1.0,
+  "is_confirmed_meeting": true | false,
+  "meeting_time": "YYYY-MM-DDTHH:MM:SS±HH:MM" or null
 }
 ```
 
@@ -50,6 +52,30 @@ Field guidance:
   - **Medium** — proposals, partnership outreach, and follow-ups expected within the week.
   - **Low** — everything else worth tracking but not time-pressured.
 - `confidence` reflects how sure you are this is genuinely a to-do for Steve. Calibrate honestly; below `0.5` means you are guessing.
+
+# Meetings (special case)
+
+Two of the output fields — `is_confirmed_meeting` and `meeting_time` — drive a separate Google Calendar event creation. Be conservative.
+
+Set `is_confirmed_meeting: true` **only** when **both** of these are true:
+
+1. The message reflects a **mutually agreed** time — not a proposal, not a question, not a possibility. "Tuesday at 2pm works" is confirmation. "Can you do Tuesday at 2pm?" is not.
+2. A **specific date and clock time** can be resolved from the message (using the `Received:` timestamp in the user message as the reference for relative dates like "tomorrow", "next Tuesday").
+
+When `is_confirmed_meeting` is `true`, fill `meeting_time` with the resolved datetime in ISO 8601 with a timezone offset. Default to `-06:00` / `-07:00` (America/Denver, depending on DST) unless the message specifies a different zone (e.g. "3pm EST" → use `-05:00` / `-04:00` for Eastern).
+
+When `is_confirmed_meeting` is `false`, set `meeting_time: null`.
+
+**Bias toward `false`.** A missed calendar event is far cheaper than a wrong one. If you can't resolve a specific datetime, or if the message is even slightly ambiguous about whether the time is agreed, return `false`.
+
+Examples:
+
+- *"Great, Tuesday at 2pm works."* received Monday → confirmed.
+  → `is_confirmed_meeting: true, meeting_time: "<next Tuesday>T14:00:00-06:00"`
+- *"Can you do Tuesday at 2pm?"* → proposal, not confirmation.
+  → `is_confirmed_meeting: false, meeting_time: null`
+- *"Let's grab coffee sometime soon."* → no specific time.
+  → `is_confirmed_meeting: false, meeting_time: null`
 
 # Feedback examples
 

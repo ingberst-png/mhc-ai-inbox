@@ -104,7 +104,12 @@ def _rich(content: str) -> dict:
 
 async def write_action_item(
     settings: Settings, *, msg: dict[str, Any], extracted: dict[str, Any]
-) -> str:
+) -> dict[str, str]:
+    """Create a Notion page for the extracted action item.
+
+    Returns a dict with ``id`` (page UUID) and ``url`` (canonical Notion URL).
+    The URL is needed downstream for the Calendar event description.
+    """
     title = (extracted.get("title") or msg.get("subject") or "(untitled)").strip()[:200]
     source = "Gmail" if msg["source"] == "gmail" else "iMessage"
     sender = extracted.get("sender") or msg["sender"]
@@ -143,7 +148,7 @@ async def write_action_item(
         )
 
     page = await asyncio.to_thread(_create)
-    return page["id"]
+    return {"id": page["id"], "url": page.get("url", "")}
 
 
 async def fetch_recent_feedback_examples(

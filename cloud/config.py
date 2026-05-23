@@ -8,7 +8,13 @@ from dataclasses import dataclass
 ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.events.owned"]
+# The refresh token in Railway must be minted covering BOTH scopes — see
+# forwarder/get_refresh_token.py. Each module uses only the scope it needs.
 GMAIL_POLL_INTERVAL_SECONDS = 15 * 60
+
+CALENDAR_EVENT_DURATION_MINUTES = 15
+CALENDAR_DEFAULT_TIMEZONE = "America/Denver"
 
 WORKER_BATCH_SIZE = 10
 WORKER_POLL_INTERVAL_SECONDS = 5

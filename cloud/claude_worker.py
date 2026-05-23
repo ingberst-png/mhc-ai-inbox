@@ -11,13 +11,20 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
+from cloud.calendar_writer import create_event, parse_meeting_time
 from cloud.config import (
     ANTHROPIC_MODEL,
     Settings,
     WORKER_BATCH_SIZE,
     WORKER_POLL_INTERVAL_SECONDS,
 )
-from cloud.db import claim_batch, mark_done, mark_failed, mark_skipped
+from cloud.db import (
+    claim_batch,
+    mark_done,
+    mark_failed,
+    mark_skipped,
+    set_calendar_event_id,
+)
 from cloud.notion_writer import (
     fetch_recent_feedback_examples,
     is_duplicate,
@@ -122,12 +129,61 @@ async def _process_message(
         return
 
     try:
-        page_id = await write_action_item(settings, msg=msg, extracted=result)
+        page = await write_action_item(settings, msg=msg, extracted=result)
     except Exception as e:
         logger.exception("notion write failed for msg %s", msg["id"])
         await mark_failed(msg["id"], error=f"notion write: {e}")
         return
-    await mark_done(msg["id"], claude_response=result, notion_page_id=page_id)
+    await mark_done(msg["id"], claude_response=result, notion_page_id=page["id"])
+
+    # Calendar event creation — best-effort, runs ONLY after the Notion write
+    # already succeeded. A failure here never marks the message failed, since
+    # the primary deliverable (the Notion row) is already safe.
+    await _maybe_create_calendar_event(settings, msg=msg, extracted=result, notion_url=page.get("url"))
+
+
+async def _maybe_create_calendar_event(
+    settings: Settings,
+    *,
+    msg: dict[str, Any],
+    extracted: dict[str, Any],
+    notion_url: str | None,
+) -> None:
+    if not extracted.get("is_confirmed_meeting"):
+        return
+    meeting_time = parse_meeting_time(extracted.get("meeting_time"))
+    if meeting_time is None:
+        logger.info(
+            "msg %s flagged is_confirmed_meeting but meeting_time missing/unparseable; skipping calendar",
+            msg["id"],
+        )
+        return
+    if msg.get("calendar_event_id"):
+        logger.info("msg %s already has calendar_event_id; skipping", msg["id"])
+        return
+    name = extracted.get("sender") or msg.get("sender") or "Unknown"
+    snippet = (extracted.get("snippet") or msg.get("body") or "").strip()[:200]
+    gmail_link = msg.get("original_link") if msg.get("source") == "gmail" else None
+    try:
+        event_id = await create_event(
+            settings,
+            name=name,
+            meeting_time=meeting_time,
+            snippet=snippet,
+            notion_url=notion_url,
+            gmail_link=gmail_link,
+        )
+    except Exception:
+        logger.exception("calendar event creation failed for msg %s (Notion row unaffected)", msg["id"])
+        return
+    try:
+        await set_calendar_event_id(msg["id"], event_id)
+        logger.info("msg %s: calendar event %s created at %s", msg["id"], event_id, meeting_time.isoformat())
+    except Exception:
+        logger.exception(
+            "could not persist calendar_event_id=%s for msg %s; event exists in Calendar but DB lost it",
+            event_id, msg["id"],
+        )
 
 
 async def run_worker_loop(settings: Settings, stop_event: asyncio.Event) -> None:

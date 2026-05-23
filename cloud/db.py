@@ -14,23 +14,27 @@ logger = logging.getLogger(__name__)
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS messages (
-    id              BIGSERIAL PRIMARY KEY,
-    source          TEXT NOT NULL CHECK (source IN ('gmail','imessage')),
-    external_id     TEXT NOT NULL,
-    sender          TEXT NOT NULL,
-    subject         TEXT,
-    body            TEXT NOT NULL,
-    received_at     TIMESTAMPTZ NOT NULL,
-    original_link   TEXT,
-    status          TEXT NOT NULL DEFAULT 'queued'
-                    CHECK (status IN ('queued','processing','done','skipped','failed')),
-    claude_response JSONB,
-    notion_page_id  TEXT,
-    error           TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    id                 BIGSERIAL PRIMARY KEY,
+    source             TEXT NOT NULL CHECK (source IN ('gmail','imessage')),
+    external_id        TEXT NOT NULL,
+    sender             TEXT NOT NULL,
+    subject            TEXT,
+    body               TEXT NOT NULL,
+    received_at        TIMESTAMPTZ NOT NULL,
+    original_link      TEXT,
+    status             TEXT NOT NULL DEFAULT 'queued'
+                       CHECK (status IN ('queued','processing','done','skipped','failed')),
+    claude_response    JSONB,
+    notion_page_id     TEXT,
+    calendar_event_id  TEXT,
+    error              TEXT,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (source, external_id)
 );
+
+-- Idempotent migration for deployments that pre-date the calendar feature.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS calendar_event_id TEXT;
 
 CREATE INDEX IF NOT EXISTS messages_status_received_idx
     ON messages (status, received_at);
@@ -159,6 +163,21 @@ async def mark_failed(message_id: int, *, error: str) -> None:
             await cur.execute(
                 "UPDATE messages SET status='failed', error=%s, updated_at=NOW() WHERE id=%s",
                 (error, message_id),
+            )
+
+
+async def set_calendar_event_id(message_id: int, event_id: str) -> None:
+    """Record a Google Calendar event ID against a previously-processed message.
+
+    Separate from mark_done() because the calendar write is best-effort and
+    happens *after* the message is already in 'done' status (Notion-side).
+    Does not change status or updated_at semantics.
+    """
+    async with pool().connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "UPDATE messages SET calendar_event_id=%s WHERE id=%s",
+                (event_id, message_id),
             )
 
 

@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
-"""One-time Gmail OAuth helper - mints a refresh token for the cloud agent.
+"""One-time Google OAuth helper - mints a refresh token for the cloud agent.
 
 Setup:
   1. In Google Cloud Console, create an OAuth 2.0 Client ID of type
-     "Desktop app" with the gmail.readonly scope authorized.
+     "Desktop app". Make sure the consent screen has BOTH of these scopes
+     authorized:
+        - https://www.googleapis.com/auth/gmail.readonly
+        - https://www.googleapis.com/auth/calendar.events.owned
   2. Download the JSON file (commonly named credentials.json).
   3. Run:  python3 get_refresh_token.py path/to/credentials.json
 
 The script opens a browser for consent, then prints GMAIL_CLIENT_ID,
 GMAIL_CLIENT_SECRET, and GMAIL_REFRESH_TOKEN to stdout. Paste those three
 values into Railway as environment variables for the cloud agent.
+
+The same refresh token covers both Gmail and Calendar APIs. If you minted
+a token before the calendar feature shipped, re-run this script to issue
+a new token with both scopes; the old gmail-only token will stop working
+for calendar writes but stay fine for gmail polls.
 
 Run this locally, not on Railway - the OAuth flow needs a local browser
 to complete the redirect.
@@ -28,7 +36,10 @@ except ImportError:
     print("Install with:  pip install google-auth-oauthlib", file=sys.stderr)
     sys.exit(2)
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/calendar.events.owned",
+]
 
 
 def main() -> int:
