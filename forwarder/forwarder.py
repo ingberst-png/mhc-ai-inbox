@@ -274,7 +274,10 @@ def run(dry_run: bool, sample: int | None = None) -> int:
         return 3
 
     try:
-        con = sqlite3.connect(f"file:{CHAT_DB}?mode=ro&immutable=1", uri=True, timeout=5)
+        # mode=ro for safety; intentionally NOT immutable=1 — Messages.app uses
+        # WAL mode and immutable would make SQLite skip the WAL, returning a
+        # stale snapshot that lags real arrival by minutes-to-hours.
+        con = sqlite3.connect(f"file:{CHAT_DB}?mode=ro", uri=True, timeout=5)
     except sqlite3.DatabaseError as e:
         logging.error(
             "cannot open chat.db read-only (%s). Grant Full Disk Access to %s "
