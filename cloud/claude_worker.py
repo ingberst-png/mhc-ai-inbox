@@ -279,8 +279,13 @@ async def run_worker_loop(settings: Settings, stop_event: asyncio.Event) -> None
     while not stop_event.is_set():
         try:
             batch = await claim_batch(WORKER_BATCH_SIZE)
-        except Exception:
-            logger.exception("worker claim_batch failed")
+        except Exception as e:
+            # Include type + message on the headline line so Railway's
+            # log viewer surfaces the cause even if it collapses the
+            # traceback that logger.exception() appends.
+            logger.exception(
+                "worker claim_batch failed: %s: %s", type(e).__name__, e
+            )
             await asyncio.sleep(WORKER_POLL_INTERVAL_SECONDS)
             continue
         if not batch:
