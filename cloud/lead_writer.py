@@ -38,7 +38,15 @@ _LEAD_QUALITY_PROP = "Lead Quality"
 _STATUS_PROP = "Status"
 _SOURCE_URL_PROP = "Source URL"
 
-_SERVICE_VALUES = {"Private Chef", "Meal Prep", "Catering", "Homepage / General", "Other"}
+_SERVICE_VALUES = {
+    "Private Chef",
+    "Meal Prep",
+    "Catering",
+    "Cooking Classes",
+    "Wedding Catering",
+    "Homepage / General",
+    "Other",
+}
 _LEAD_QUALITY_VALUES = {"Genuine", "Sales / Solicitation", "Unsure", "Job Application"}
 
 _RICH_TEXT_MAX = 1900

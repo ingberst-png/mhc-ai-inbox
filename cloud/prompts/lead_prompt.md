@@ -23,7 +23,7 @@ For each of these two fields, pick the **first available source** in this order:
 2. **User-submitted body fields** — the contact-us form (no hidden tracking) instead asks the visitor to pick a market and service directly. Fields are typically named `market` / `Market` and `services` / `Services`. Use these when the hidden tracking fields are absent.
 3. **Subject suffix** — as a final fallback, parse `[MileHighCook Lead] {suffix}`. E.g. "Vail Catering - Final CTA" → market `vail`, service `Catering`. "Park City Meal Prep" → market `park city`, service `Meal Prep`. "Homepage" → market `homepage`, service `Homepage / General`.
 
-Service must be one of: `Private Chef`, `Meal Prep`, `Catering`, `Homepage / General`, `Other`. Map free-text values to the closest match (e.g. body `services: private-chef` → `Private Chef`; `services: catering events` → `Catering`). Unrecognizable values → `Other`. Job applications (see Classification) → `Other`.
+Service must be one of: `Private Chef`, `Meal Prep`, `Catering`, `Cooking Classes`, `Wedding Catering`, `Homepage / General`, `Other`. Map free-text values to the closest match (e.g. body `services: private-chef` → `Private Chef`; `source_service: cooking-classes` → `Cooking Classes`; subject suffix "Aspen Wedding Catering" → `Wedding Catering`). Note that `Wedding Catering` is distinct from generic `Catering` — use it when the form or context names a wedding specifically. Unrecognizable values → `Other`. Job applications (see Classification) → `Other`.
 
 Source Market is free text — lowercase the value and strip campaign tags ("- Final CTA", etc.).
 
@@ -36,7 +36,7 @@ Return **strict JSON only**. No prose, no markdown, no code fences. The exact sh
   "first_name": "string or null",
   "last_name": "string or null",
   "phone": "string or null",
-  "service": "Private Chef | Meal Prep | Catering | Homepage / General | Other",
+  "service": "Private Chef | Meal Prep | Catering | Cooking Classes | Wedding Catering | Homepage / General | Other",
   "source_market": "lowercase string (e.g. 'flagstaff') or null",
   "event_date": "YYYY-MM-DD or null",
   "headcount": integer or null,
