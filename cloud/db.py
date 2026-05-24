@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS messages (
     body               TEXT NOT NULL,
     received_at        TIMESTAMPTZ NOT NULL,
     original_link      TEXT,
+    reply_to           TEXT,
     status             TEXT NOT NULL DEFAULT 'queued'
                        CHECK (status IN ('queued','processing','done','skipped','failed')),
     claude_response    JSONB,
@@ -33,8 +34,9 @@ CREATE TABLE IF NOT EXISTS messages (
     UNIQUE (source, external_id)
 );
 
--- Idempotent migration for deployments that pre-date the calendar feature.
+-- Idempotent migrations for deployments that pre-date later features.
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS calendar_event_id TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to TEXT;
 
 CREATE INDEX IF NOT EXISTS messages_status_received_idx
     ON messages (status, received_at);
@@ -88,6 +90,7 @@ async def enqueue_message(
     body: str,
     received_at: dt.datetime,
     original_link: str | None,
+    reply_to: str | None = None,
 ) -> int | None:
     """Insert a new message. Returns id, or None if (source, external_id) already exists."""
     async with pool().connection() as conn:
@@ -95,12 +98,12 @@ async def enqueue_message(
             await cur.execute(
                 """
                 INSERT INTO messages
-                    (source, external_id, sender, subject, body, received_at, original_link)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (source, external_id, sender, subject, body, received_at, original_link, reply_to)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (source, external_id) DO NOTHING
                 RETURNING id
                 """,
-                (source, external_id, sender, subject, body, received_at, original_link),
+                (source, external_id, sender, subject, body, received_at, original_link, reply_to),
             )
             row = await cur.fetchone()
             return row["id"] if row else None

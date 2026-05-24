@@ -31,6 +31,7 @@ class Settings:
     database_url: str
     notion_token: str
     notion_database_id: str
+    notion_leads_database_id: str
     anthropic_api_key: str
     gmail_client_id: str
     gmail_client_secret: str
@@ -47,6 +48,7 @@ _REQUIRED = (
     "DATABASE_URL",
     "NOTION_TOKEN",
     "NOTION_DATABASE_ID",
+    "NOTION_LEADS_DATABASE_ID",
     "ANTHROPIC_API_KEY",
     "GMAIL_CLIENT_ID",
     "GMAIL_CLIENT_SECRET",
@@ -65,6 +67,7 @@ def load_settings() -> Settings:
         database_url=os.environ["DATABASE_URL"],
         notion_token=os.environ["NOTION_TOKEN"],
         notion_database_id=os.environ["NOTION_DATABASE_ID"],
+        notion_leads_database_id=os.environ["NOTION_LEADS_DATABASE_ID"],
         anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
         gmail_client_id=os.environ["GMAIL_CLIENT_ID"],
         gmail_client_secret=os.environ["GMAIL_CLIENT_SECRET"],

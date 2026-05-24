@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 
 GMAIL_QUERY = "newer_than:1d -in:sent -in:chats -in:spam -in:trash"
 
+# Senders that ALWAYS pass — checked before any exclusion rule. Web3Forms lead
+# notifications carry List-Unsubscribe headers and noreply-style markers that
+# would otherwise drop them; we route these to the Leads pipeline downstream.
+_ALLOWLIST_SENDERS = frozenset({"notify@web3forms.com"})
+
 # Local-part substring patterns flagged as automated.
 _NOREPLY_TOKENS = (
     "noreply",
@@ -31,6 +36,15 @@ _NOREPLY_TOKENS = (
     "mailer-daemon",
 )
 _MARKETING_TOKENS = ("newsletter", "marketing", "promo", "offers", "deals", "campaigns")
+
+
+def _sender_address(from_header: str | None) -> str:
+    _, addr = parseaddr(from_header or "")
+    return addr.lower()
+
+
+def _is_allowlisted(from_header: str | None) -> bool:
+    return _sender_address(from_header) in _ALLOWLIST_SENDERS
 
 
 def _credentials(settings: Settings) -> Credentials:
@@ -113,11 +127,14 @@ async def _process_batch(settings: Settings) -> tuple[int, int]:
         headers = payload.get("headers", []) or []
         from_header = _header(headers, "From")
         subject = _header(headers, "Subject") or ""
-        automated, reason = _is_automated(from_header, headers)
-        if automated:
-            skipped += 1
-            logger.debug("gmail filtered %s (%s)", m.get("id"), reason)
-            continue
+        reply_to = _header(headers, "Reply-To")
+        allowlisted = _is_allowlisted(from_header)
+        if not allowlisted:
+            automated, reason = _is_automated(from_header, headers)
+            if automated:
+                skipped += 1
+                logger.debug("gmail filtered %s (%s)", m.get("id"), reason)
+                continue
         body = _extract_body(payload)
         ts = dt.datetime.fromtimestamp(
             int(m["internalDate"]) / 1000, tz=dt.timezone.utc
@@ -132,6 +149,7 @@ async def _process_batch(settings: Settings) -> tuple[int, int]:
             body=body,
             received_at=ts,
             original_link=link,
+            reply_to=reply_to,
         )
         if inserted is not None:
             enqueued += 1

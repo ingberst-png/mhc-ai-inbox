@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from cloud.db import (
     mark_skipped,
     set_calendar_event_id,
 )
+from cloud.lead_writer import is_duplicate_lead, write_lead
 from cloud.notion_writer import (
     fetch_recent_feedback_examples,
     is_duplicate,
@@ -34,11 +36,25 @@ from cloud.notion_writer import (
 logger = logging.getLogger(__name__)
 
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "system_prompt.md"
+_LEAD_PROMPT_PATH = Path(__file__).parent / "prompts" / "lead_prompt.md"
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+_WEB3FORMS_SENDER = "notify@web3forms.com"
 
 
 def _load_system_prompt() -> str:
     return _PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _load_lead_prompt() -> str:
+    return _LEAD_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def _is_web3forms_lead(msg: dict[str, Any]) -> bool:
+    if msg.get("source") != "gmail":
+        return False
+    _, addr = parseaddr(msg.get("sender") or "")
+    return addr.lower() == _WEB3FORMS_SENDER
 
 
 def _format_examples(examples: list[dict[str, Any]]) -> str:
@@ -73,6 +89,16 @@ def _build_user_message(msg: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _build_lead_user_message(msg: dict[str, Any]) -> str:
+    parts = [
+        f"Subject: {msg.get('subject') or ''}",
+        f"Received: {msg['received_at'].isoformat()}",
+        "Body:",
+        msg["body"] or "",
+    ]
+    return "\n".join(parts)
+
+
 def _parse_json(text: str) -> dict[str, Any]:
     text = text.strip()
     try:
@@ -102,12 +128,71 @@ async def _extract(
     return _parse_json(text)
 
 
+async def _extract_lead(
+    client: AsyncAnthropic, lead_prompt: str, msg: dict[str, Any]
+) -> dict[str, Any]:
+    resp = await client.messages.create(
+        model=ANTHROPIC_MODEL,
+        max_tokens=1500,
+        system=lead_prompt,
+        messages=[{"role": "user", "content": _build_lead_user_message(msg)}],
+    )
+    text = "".join(block.text for block in resp.content if block.type == "text")
+    return _parse_json(text)
+
+
+async def _process_lead(
+    client: AsyncAnthropic,
+    settings: Settings,
+    lead_prompt: str,
+    msg: dict[str, Any],
+) -> None:
+    try:
+        result = await _extract_lead(client, lead_prompt, msg)
+    except Exception as e:
+        logger.exception("claude lead extraction failed for msg %s", msg["id"])
+        await mark_failed(msg["id"], error=f"lead extraction: {e}")
+        return
+
+    # Dedup against Leads DB: same Email + same Received-day (UTC).
+    _, dedup_email = parseaddr(msg.get("reply_to") or "")
+    try:
+        duplicate = await is_duplicate_lead(
+            settings, email=dedup_email, received_at=msg["received_at"]
+        )
+    except Exception:
+        logger.exception("lead dedup query failed; proceeding without dedup")
+        duplicate = False
+    if duplicate:
+        await mark_skipped(
+            msg["id"],
+            claude_response=result,
+            reason="duplicate lead (Email + same received-day)",
+        )
+        return
+
+    try:
+        page = await write_lead(settings, msg=msg, extracted=result)
+    except Exception as e:
+        logger.exception("leads notion write failed for msg %s", msg["id"])
+        await mark_failed(msg["id"], error=f"leads write: {e}")
+        return
+    await mark_done(msg["id"], claude_response=result, notion_page_id=page["id"])
+
+
 async def _process_message(
     client: AsyncAnthropic,
     settings: Settings,
     system_prompt: str,
+    lead_prompt: str,
     msg: dict[str, Any],
 ) -> None:
+    # One email = one destination. Web3Forms leads bypass the action-item path
+    # entirely — they go to the Leads DB only.
+    if _is_web3forms_lead(msg):
+        await _process_lead(client, settings, lead_prompt, msg)
+        return
+
     try:
         result = await _extract(client, system_prompt, msg)
     except Exception as e:
@@ -190,6 +275,7 @@ async def run_worker_loop(settings: Settings, stop_event: asyncio.Event) -> None
     logger.info("claude worker starting (batch=%d, model=%s)", WORKER_BATCH_SIZE, ANTHROPIC_MODEL)
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     template = _load_system_prompt()
+    lead_prompt = _load_lead_prompt()
     while not stop_event.is_set():
         try:
             batch = await claim_batch(WORKER_BATCH_SIZE)
@@ -210,6 +296,6 @@ async def run_worker_loop(settings: Settings, stop_event: asyncio.Event) -> None
             examples = []
         system_prompt = _build_system_prompt(template, examples)
         await asyncio.gather(
-            *(_process_message(client, settings, system_prompt, m) for m in batch)
+            *(_process_message(client, settings, system_prompt, lead_prompt, m) for m in batch)
         )
     logger.info("claude worker stopped")
